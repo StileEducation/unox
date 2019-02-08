@@ -14,16 +14,23 @@
 # and is intended to be installed as unison-fsmonitor in the PATH in OS X. This is the
 # missing puzzle piece for repeat = watch support for Unison in in OS X.
 #
-# Dependencies: pip install watchdog
+# Dependencies: brew install fswatch
 #
 # Licence: MPLv2 (https://www.mozilla.org/MPL/2.0/)
+
+FSWATCH_CONFIG = {
+    # Don't watch the behind-the-scenes content of git repos.
+    "--exclude": r'.*\/\.git\/.*',
+    # Latency in seconds. 0.1 is the minimum, default is 1. Lower values will increasingly compromise system performance.
+    "--latency": '0.1'
+}
 
 import sys
 import os
 import traceback
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 import signal
+import threading
+import subprocess
 
 # Import depending on python version
 if sys.version_info.major < 3:
@@ -43,12 +50,76 @@ my_log_prefix = "[unox]"
 _in_debug = "--debug" in sys.argv
 _in_debug_plus = False
 
-# Global watchdog observer.
+
+class ProcessMonitorThread(threading.Thread):
+    def __init__(self, procargs, onreadline):
+        super(ProcessMonitorThread, self).__init__()
+        self.procargs = procargs
+        self.onreadline = onreadline
+        self.proc = None
+
+    def run(self):
+        if _in_debug:
+            _debug("starting subprocess:\n" +
+                   " ".join(self.procargs))
+        self.proc = subprocess.Popen(
+            self.procargs, stdout=subprocess.PIPE)
+        if _in_debug:
+            _debug("started subprocess, waiting for output.")
+        for line in iter(self.proc.stdout.readline, ''):
+            line = line.strip()
+            if _in_debug:
+                _debug("read line from subprocess:\n" + line)
+            self.onreadline(line)
+
+    def kill(self):
+        if _in_debug:
+            _debug("killing subprocess that was invocated as:\n" +
+                   " ".join(self.procargs))
+        self.proc.kill()
+
+
+class Observer(object):
+
+    def __init__(self):
+        super(Observer, self).__init__()
+        self.watchers = {}
+        self.last_watcher_id = 0
+
+    def stop(self):
+        for watcher_id in self.watchers:
+            self.unschedule(watcher_id)
+
+    def schedule(self, handler, fspath, recursive=False):
+        # Technically according to fswatch's manual, we should be invoking fswatch with -0 and reading until the null byte instead of using readline().
+        # Apparently it's possible to have \n characters in filenames.
+        # However, if you ever name a file with \n at Stile, I think you deserve what's going to happen :p
+        fswatchargs = ["fswatch", fspath]
+        if recursive:
+            fswatchargs.append("--recursive")
+        for k, v in FSWATCH_CONFIG.iteritems():
+            fswatchargs.append(k)
+            fswatchargs.append(v)
+        procmon = ProcessMonitorThread(
+            fswatchargs, onreadline=lambda path: handler.dispatch(path))
+        procmon.start()
+
+        self.last_watcher_id += 1
+        self.watchers[self.last_watcher_id] = procmon
+        return self.last_watcher_id
+
+    def unschedule(self, watcher_id):
+        self.watchers[watcher_id].kill()
+
+
 observer = Observer()
-observer.start()
 
 # Dict of monitored replicas.
-# Replica hash mapped to watchdog.observers.api.ObservedWatch objects.
+# Replica string name mapped to object describing watch mode and path.
+# {
+#     "watch": watch,
+#     "fspath": fspath
+# }
 replicas = {}
 
 # Dict of pending replicas that are beeing waited on.
@@ -176,13 +247,12 @@ def triggerReplica(replica, local_path_toks):
     _debug_triggers()
 
 
-class Handler(FileSystemEventHandler):
+class Handler(object):
     def __init__(self, fspath, replica):
         self.replica = replica
         self.fspath = fspath
 
-    def dispatch(self, event):
-        path = event.src_path
+    def dispatch(self, path):
         try:
             if not path.startswith(self.fspath):
                 return warn("unexpected file event at path [" + path + "] for [" + self.fspath + "]")
@@ -314,4 +384,3 @@ if __name__ == '__main__':
         for replica in replicas:
             observer.unschedule(replicas[replica]["watch"])
         observer.stop()
-        observer.join()
