@@ -14,16 +14,15 @@
 # and is intended to be installed as unison-fsmonitor in the PATH in OS X. This is the
 # missing puzzle piece for repeat = watch support for Unison in in OS X.
 #
-# Dependencies: pip install watchdog
+# Dependencies: brew install fswatch
 #
 # Licence: MPLv2 (https://www.mozilla.org/MPL/2.0/)
 
 import sys
 import os
 import traceback
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 import signal
+import threading
 
 # Import depending on python version
 if sys.version_info.major < 3:
@@ -43,12 +42,39 @@ my_log_prefix = "[unox]"
 _in_debug = "--debug" in sys.argv
 _in_debug_plus = False
 
-# Global watchdog observer.
+
+class Observer(Thread):
+
+    def __init__(self):
+        super()
+        self.stop_requested = Condition()
+        self.watchers = []
+
+    def run():
+        with self.stop_requested:
+            self.stop_requested.wait()
+
+    def stop():
+        with self.stop_requested
+            self.stop_requested.notify()
+        # TODO: Clean up watchers.
+
+    def schedule(handler, fspath, recursive=False):
+        pass
+
+    def unschedule(watch):
+        pass
+
+
 observer = Observer()
 observer.start()
 
 # Dict of monitored replicas.
-# Replica hash mapped to watchdog.observers.api.ObservedWatch objects.
+# Replica string name mapped to object describing watch mode and path.
+# {
+#     "watch": watch,
+#     "fspath": fspath
+# }
 replicas = {}
 
 # Dict of pending replicas that are beeing waited on.
@@ -176,7 +202,7 @@ def triggerReplica(replica, local_path_toks):
     _debug_triggers()
 
 
-class Handler(FileSystemEventHandler):
+class Handler(object):
     def __init__(self, fspath, replica):
         self.replica = replica
         self.fspath = fspath
