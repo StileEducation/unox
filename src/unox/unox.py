@@ -18,11 +18,19 @@
 #
 # Licence: MPLv2 (https://www.mozilla.org/MPL/2.0/)
 
+FSWATCH_CONFIG = {
+    # Don't watch the behind-the-scenes content of git repos.
+    "--exclude": r'.*\/\.git\/.*',
+    # Latency in seconds. 0.1 is the minimum, default is 1. Lower values will increasingly compromise system performance.
+    "--latency": '0.5'
+}
+
 import sys
 import os
 import traceback
 import signal
 import threading
+import subprocess
 
 # Import depending on python version
 if sys.version_info.major < 3:
@@ -43,31 +51,55 @@ _in_debug = "--debug" in sys.argv
 _in_debug_plus = False
 
 
-class Observer(Thread):
-
-    def __init__(self):
-        super()
-        self.stop_requested = Condition()
-        self.watchers = []
+class ProcessMonitorThread(threading.Thread):
+    def __init__(self, procargs, onreadline):
+        self.procargs = procargs
+        self.onreadline = onreadline
+        self.proc = None
+        super.__init__(self)
 
     def run():
-        with self.stop_requested:
-            self.stop_requested.wait()
+        self.proc = subprocess.call(self.procargs, stdout=subprocess.PIPE)
+        for line in iter(proc.stdout.readline, ''):
+            line = line.strip()
+            self.onreadline(line)
 
-    def stop():
-        with self.stop_requested
-            self.stop_requested.notify()
-        # TODO: Clean up watchers.
+    def kill()
+        self.proc.kill()
 
-    def schedule(handler, fspath, recursive=False):
-        pass
 
-    def unschedule(watch):
-        pass
+class Observer(object):
+
+    def __init__(self):
+        super().__init__(self)
+        self.watchers = {}
+        self.last_watcher_id = 0
+
+    def stop(self):
+        for watcher_id in self.watchers:
+            self.unschedule(watcher_id)
+
+    def schedule(self, handler, fspath, recursive=False):
+
+        fswatchargs = ["fswatch", fspath]
+        if recursive
+            fswatchargs.append("--recursive")
+        for k, v in FSWATCH_CONFIG.iteritems():
+            fswatchargs.append(k)
+            fswatchargs.append(v)
+        procmon = ProcessMonitorThread(
+            fswatchargs, onreadline=lambda path: handler.dispatch(path))
+        procmon.start()
+
+        self.last_watcher_id += 1
+        self.watchers[self.last_watcher_id] = procmon
+        return self.last_watcher_id
+
+    def unschedule(self, watcher_id):
+        self.watchers[watcher_id].kill()
 
 
 observer = Observer()
-observer.start()
 
 # Dict of monitored replicas.
 # Replica string name mapped to object describing watch mode and path.
