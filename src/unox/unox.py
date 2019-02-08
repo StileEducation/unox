@@ -252,8 +252,7 @@ class Handler(object):
         self.replica = replica
         self.fspath = fspath
 
-    def dispatch(self, event):
-        path = event.src_path
+    def dispatch(self, path):
         try:
             if not path.startswith(self.fspath):
                 return warn("unexpected file event at path [" + path + "] for [" + self.fspath + "]")
