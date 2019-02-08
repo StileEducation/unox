@@ -22,7 +22,7 @@ FSWATCH_CONFIG = {
     # Don't watch the behind-the-scenes content of git repos.
     "--exclude": r'.*\/\.git\/.*',
     # Latency in seconds. 0.1 is the minimum, default is 1. Lower values will increasingly compromise system performance.
-    "--latency": '0.5'
+    "--latency": '0.1'
 }
 
 import sys
@@ -53,25 +53,36 @@ _in_debug_plus = False
 
 class ProcessMonitorThread(threading.Thread):
     def __init__(self, procargs, onreadline):
+        super(ProcessMonitorThread, self).__init__()
         self.procargs = procargs
         self.onreadline = onreadline
         self.proc = None
-        super.__init__(self)
 
-    def run():
-        self.proc = subprocess.call(self.procargs, stdout=subprocess.PIPE)
-        for line in iter(proc.stdout.readline, ''):
+    def run(self):
+        if _in_debug:
+            _debug("starting subprocess:\n" +
+                   " ".join(self.procargs))
+        self.proc = subprocess.Popen(
+            self.procargs, stdout=subprocess.PIPE)
+        if _in_debug:
+            _debug("started subprocess, waiting for output.")
+        for line in iter(self.proc.stdout.readline, ''):
             line = line.strip()
+            if _in_debug:
+                _debug("read line from subprocess:\n" + line)
             self.onreadline(line)
 
-    def kill()
+    def kill(self):
+        if _in_debug:
+            _debug("killing subprocess that was invocated as:\n" +
+                   " ".join(self.procargs))
         self.proc.kill()
 
 
 class Observer(object):
 
     def __init__(self):
-        super().__init__(self)
+        super(Observer, self).__init__()
         self.watchers = {}
         self.last_watcher_id = 0
 
@@ -80,9 +91,11 @@ class Observer(object):
             self.unschedule(watcher_id)
 
     def schedule(self, handler, fspath, recursive=False):
-
+        # Technically according to fswatch's manual, we should be invoking fswatch with -0 and reading until the null byte instead of using readline().
+        # Apparently it's possible to have \n characters in filenames.
+        # However, if you ever name a file with \n at Stile, I think you deserve what's going to happen :p
         fswatchargs = ["fswatch", fspath]
-        if recursive
+        if recursive:
             fswatchargs.append("--recursive")
         for k, v in FSWATCH_CONFIG.iteritems():
             fswatchargs.append(k)
@@ -372,4 +385,3 @@ if __name__ == '__main__':
         for replica in replicas:
             observer.unschedule(replicas[replica]["watch"])
         observer.stop()
-        observer.join()
