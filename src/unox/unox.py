@@ -20,7 +20,7 @@
 
 FSWATCH_CONFIG = {
     # Don't watch the behind-the-scenes content of git repos.
-    "--exclude": r'.*\/\.git\/.*',
+    "--exclude": r'.*/\.git/.*',
     # Latency in seconds. 0.1 is the minimum, default is 1. Lower values will increasingly compromise system performance.
     "--latency": '0.1'
 }
@@ -66,11 +66,16 @@ class ProcessMonitorThread(threading.Thread):
             self.procargs, stdout=subprocess.PIPE)
         if _in_debug:
             _debug("started subprocess, waiting for output.")
+        # TODO: End on output to stderr?
         for line in iter(self.proc.stdout.readline, ''):
             line = line.strip()
             if _in_debug:
                 _debug("read line from subprocess:\n" + line)
             self.onreadline(line)
+        # We must've received an EOF.
+        exitcode = self.proc.wait()
+        if not exitcode == 0:
+            fatal("fswatch subprocess exited.")
 
     def kill(self):
         if _in_debug:
@@ -159,6 +164,12 @@ def _debug(msg):
 
 def warn(msg):
     sys.stderr.write(my_log_prefix + "[WARN]: " + msg.strip() + "\n")
+
+
+def fatal(msg, exitcode=1):
+    sys.stderr.write(my_log_prefix + "[FATAL]: " + msg.strip() + "\n")
+    # This invocation of exit will quit the main application even from a thread.
+    os._exit(exitcode)
 
 
 def sendCmd(cmd, args):
