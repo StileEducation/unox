@@ -57,6 +57,7 @@ class ProcessMonitorThread(threading.Thread):
         self.procargs = procargs
         self.onreadline = onreadline
         self.proc = None
+        self.stopped = False
 
     def run(self):
         if _in_debug:
@@ -74,10 +75,12 @@ class ProcessMonitorThread(threading.Thread):
             self.onreadline(line)
         # We must've received an EOF.
         exitcode = self.proc.wait()
-        if not exitcode == 0:
-            fatal("fswatch subprocess exited.")
+        if not self.stopped:
+            fatal("fswatch subprocess exited with code %d." % exitcode)
 
     def kill(self):
+        # 'stopped' indicates that termination of the monitored process is intended and not an error.
+        self.stopped = True
         if _in_debug:
             _debug("killing subprocess that was invocated as:\n" +
                    " ".join(self.procargs))
